@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Control de Ingreso – Teatro</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin: 0; padding: 1rem; }
+    video { border: 1px solid #ccc; width: 100%; max-width: 400px; }
+    #log { margin-top: 1rem; text-align: left; max-width: 400px; margin-left: auto; margin-right: auto; }
+    #log div { border-bottom: 1px solid #eee; padding: .5rem 0; }
+    .valid { color: green; }
+    .dupe  { color: red;   font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Control de Ingreso QR</h1>
+  <video id="video" playsinline autoplay></video>
+  <canvas id="canvas" hidden></canvas>
+  <div id="log"></div>
+
+  <!-- jsQR: decodificador de QR en JavaScript -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+  <script>
+    const video  = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const log    = document.getElementById('log');
+    const ctx    = canvas.getContext('2d');
+    const scanned = new Set();
+
+    // Pide permiso y activa la cámara trasera
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => {
+        video.srcObject = stream;
+        video.play();
+        requestAnimationFrame(tick);
+      })
+      .catch(err => {
+        log.innerHTML = `<div class="dupe">Error al acceder a la cámara: ${err}</div>`;
+      });
+
+    function tick() {
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+        if (code) {
+          handleCode(code.data);
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    function handleCode(data) {
+      // Asumimos payload del tipo "ID=V123|B=Butaca12"
+      const parts = {};
+      data.split('|').forEach(p => {
+        const [k,v] = p.split('=');
+        parts[k] = v;
+      });
+      const id = parts.ID || data;
+
+      if (!scanned.has(id)) {
+        scanned.add(id);
+        const div = document.createElement('div');
+        div.className = 'valid';
+        div.innerHTML = `✅ Entrada VALIDA<br>ID: <b>${id}</b><br>Butaca: ${parts.B||'—'}`;
+        log.prepend(div);
+      } else {
+        const div = document.createElement('div');
+        div.className = 'dupe';
+        div.innerHTML = `❌ DUPLICADO<br>ID: <b>${id}</b> ya usado`;
+        log.prepend(div);
+        alert(`Entrada duplicada detectada:\nID = ${id}`);
+      }
+    }
+  </script>
+</body>
+</html>
